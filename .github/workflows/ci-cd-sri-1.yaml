@@ -318,6 +318,28 @@ jobs:
           echo "=== Service ==="
           kubectl get svc ${{ env.APP_NAME }} -n ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}
 
+      - name: Get Public URL
+        id: get-url
+        if: steps.check-cluster.outputs.cluster_exists == 'true'
+        run: |
+          echo "Waiting for LoadBalancer to be assigned..."
+          for i in {1..30}; do
+            LB_HOST=$(kubectl get svc ${{ env.APP_NAME }} -n ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+            if [ -n "$LB_HOST" ]; then
+              echo "lb_url=http://${LB_HOST}" >> $GITHUB_OUTPUT
+              echo "✅ LoadBalancer URL: http://${LB_HOST}"
+              break
+            fi
+            echo "Waiting for LoadBalancer... ($i/30)"
+            sleep 10
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "🌐 PUBLIC URL: http://${LB_HOST}"
+          echo "🔗 DOMAIN: https://agent.opsera.dev"
+          echo "=========================================="
+
       - name: Skip Notice
         if: steps.check-cluster.outputs.cluster_exists == 'false'
         run: |
@@ -335,9 +357,23 @@ jobs:
     env:
       ENVIRONMENT: ${{ inputs.environment || 'dev' }}
     steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get Public URL
+        id: url
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }} || true
+          LB_HOST=$(kubectl get svc ${{ env.APP_NAME }} -n ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          echo "lb_url=${LB_HOST}" >> $GITHUB_OUTPUT
+
       - name: Summary
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
@@ -345,4 +381,13 @@ jobs:
           echo "| Environment | ${{ env.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Image Tag | ${{ needs.build-push-image.outputs.image_tag }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Namespace | ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Workflow | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🌐 Access URLs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| LoadBalancer | http://${{ steps.url.outputs.lb_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain | https://agent.opsera.dev |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Powered by Opsera Code-to-Cloud v0.6*" >> $GITHUB_STEP_SUMMARY
