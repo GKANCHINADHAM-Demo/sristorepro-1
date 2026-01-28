@@ -280,11 +280,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Check if EKS Cluster Exists
+        id: check-cluster
+        run: |
+          if aws eks describe-cluster --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+            echo "cluster_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Cluster ${{ env.EKS_CLUSTER }} found"
+          else
+            echo "cluster_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Cluster ${{ env.EKS_CLUSTER }} not found - skipping deployment checks"
+          fi
+
       - name: Update Kubeconfig
+        if: steps.check-cluster.outputs.cluster_exists == 'true'
         run: |
           aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
       - name: Wait for Rollout
+        if: steps.check-cluster.outputs.cluster_exists == 'true'
         run: |
           echo "Waiting for deployment rollout..."
           kubectl rollout status deployment/${{ env.APP_NAME }} \
@@ -292,6 +305,7 @@ jobs:
             --timeout=300s || echo "Rollout status check timed out"
 
       - name: Get Deployment Status
+        if: steps.check-cluster.outputs.cluster_exists == 'true'
         run: |
           echo "=== Deployment Status ==="
           kubectl get deployment ${{ env.APP_NAME }} -n ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }} -o wide
@@ -303,6 +317,12 @@ jobs:
           echo ""
           echo "=== Service ==="
           kubectl get svc ${{ env.APP_NAME }} -n ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}
+
+      - name: Skip Notice
+        if: steps.check-cluster.outputs.cluster_exists == 'false'
+        run: |
+          echo "::warning::EKS cluster '${{ env.EKS_CLUSTER }}' does not exist. Deployment verification skipped."
+          echo "Create the cluster first, then re-run this workflow."
 
   # ===========================================================================
   # Job 7: Deployment Summary
