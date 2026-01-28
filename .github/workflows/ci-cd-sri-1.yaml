@@ -28,6 +28,8 @@ env:
   APP_NAME: sri-1
   AWS_REGION: us-west-2
   TENANT: opsera
+  # Cluster naming: {tenant}-{short-region}-{prod|np}
+  EKS_CLUSTER: opsera-uw2-np
 
 jobs:
   # ===========================================================================
@@ -280,7 +282,7 @@ jobs:
 
       - name: Update Kubeconfig
         run: |
-          aws eks update-kubeconfig --name ${{ env.TENANT }}-platform-cluster --region ${{ env.AWS_REGION }}
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
       - name: Wait for Rollout
         run: |
