@@ -12,6 +12,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - serviceaccount.yaml
+  - ingress.yaml
 
 commonLabels:
   app.kubernetes.io/name: sri-1
